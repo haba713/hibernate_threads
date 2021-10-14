@@ -43,6 +43,7 @@ public class MyEntityTest {
 			session.save(myEntity);
 		}
 		session.getTransaction().commit();
+		session.close();
 
 		// Update the row simultaneously with multiple workers.
 		List<Thread> threads = new ArrayList<Thread>();
@@ -53,7 +54,15 @@ public class MyEntityTest {
 		for (Thread thread : threads)
 			thread.join();
 
+			synchronized (Worker.class) {
+				while (mutex) {
+					Thread.yield();
+				}
+			}
+
 		// Check the result.
+		session = sessionFactory.openSession();
+		System.out.printf("thread-%d: assert\n", Thread.currentThread().getId());
 		session.beginTransaction();
 		MyEntity myEntity = (MyEntity) session.createQuery("from MyEntity").list().get(0);
 		assertEquals(WORKER_COUNT * UPDATE_COUNT, myEntity.getMyColumn().intValue());
@@ -87,9 +96,10 @@ public class MyEntityTest {
 				int oldValue = myEntity.getMyColumn();
 				int newValue = oldValue + 1;
 				myEntity.setMyColumn(newValue);
+				session.save(myEntity);
 				System.out.printf("thread-%d: %d + 1 = %d\n", threadId, oldValue, newValue);
-				System.out.printf("thread-%d: commit, mutex release\n", threadId);
 				session.getTransaction().commit();
+				System.out.printf("thread-%d: commit, mutex release\n", threadId);
 				mutex = false;
 			}
 		}
