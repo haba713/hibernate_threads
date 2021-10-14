@@ -39,7 +39,7 @@ public class MyEntityTest {
 		session.beginTransaction();
 		if (session.createQuery("from MyEntity").list().isEmpty()) {
 			MyEntity myEntity = new MyEntity();
-			myEntity.setMyColumn(1);
+			myEntity.setMyColumn(0);
 			session.save(myEntity);
 		}
 		session.getTransaction().commit();
@@ -62,7 +62,7 @@ public class MyEntityTest {
 		session.close();
 	}
 
-	private volatile static boolean mutex = false;
+	private static boolean mutex = false;
 
 	private class Worker implements Runnable {
 
@@ -75,21 +75,23 @@ public class MyEntityTest {
 			session.close();
 		}
 
-		private synchronized void plusOne(Session session, long threadId) {
-			while (mutex) {
-				Thread.yield();
+		private void plusOne(Session session, long threadId) {
+			synchronized (Worker.class) {
+				while (mutex) {
+					Thread.yield();
+				}
+				mutex = true;
+				System.out.printf("thread-%d: mutex lock, begin, update\n", threadId);
+				session.beginTransaction();
+				MyEntity myEntity = (MyEntity) session.createQuery("from MyEntity").list().get(0);
+				int oldValue = myEntity.getMyColumn();
+				int newValue = oldValue + 1;
+				myEntity.setMyColumn(newValue);
+				System.out.printf("thread-%d: %d + 1 = %d\n", threadId, oldValue, newValue);
+				System.out.printf("thread-%d: commit, mutex release\n", threadId);
+				session.getTransaction().commit();
+				mutex = false;
 			}
-			mutex = true;
-			System.out.printf("thread-%d: mutex lock, begin, update\n", threadId);
-			session.beginTransaction();
-			MyEntity myEntity = (MyEntity) session.createQuery("from MyEntity").list().get(0);
-			int oldValue = myEntity.getMyColumn();
-			int newValue = oldValue + 1;
-			myEntity.setMyColumn(newValue);
-			System.out.printf("thread-%d: %d + 1 = %d\n", threadId, oldValue, newValue);
-			System.out.printf("thread-%d: commit, mutex release\n", threadId);
-			session.getTransaction().commit();
-			mutex = false;
 		}
 
 	}
